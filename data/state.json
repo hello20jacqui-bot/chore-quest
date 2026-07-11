@@ -1,0 +1,43 @@
+{
+  "player": "LG-The-Great",
+  "tasks": [
+    {
+      "id": 1,
+      "name": "Make bed",
+      "icon": "🛏️",
+      "points": 10
+    },
+    {
+      "id": 3,
+      "name": "Feed the pet",
+      "icon": "🐶",
+      "points": 10
+    },
+    {
+      "id": 4,
+      "name": "Unload DIshwasher",
+      "icon": "🎒",
+      "points": 15
+    },
+    {
+      "id": 5,
+      "name": "Trial Tests",
+      "icon": "📚",
+      "points": 30
+    },
+    {
+      "id": 6,
+      "name": "Tidy room",
+      "icon": "🧸",
+      "points": 20
+    },
+    {
+      "id": 7,
+      "name": "Return School Bag into wardrobe",
+      "icon": "🍽️",
+      "points": 10
+    }
+  ],
+  "nextTaskId": 8,
+  "completions": {}
+}
