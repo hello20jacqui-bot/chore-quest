@@ -36,8 +36,14 @@
       "name": "Tidy room",
       "icon": "🧸",
       "points": 20
+    },
+    {
+      "id": 7,
+      "name": "Return Shoes",
+      "icon": "🧦",
+      "points": 5
     }
   ],
-  "nextTaskId": 7,
+  "nextTaskId": 8,
   "completions": {}
 }
