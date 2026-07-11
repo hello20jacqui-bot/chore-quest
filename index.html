@@ -120,6 +120,16 @@
   .sync-actions button{flex:1; padding:9px; border-radius:10px; border:none; font-weight:800; font-size:12px; cursor:pointer;}
   .sync-save{background:var(--purple1); color:#fff;}
   .sync-status{font-size:11px; color:var(--muted); margin-top:8px; font-weight:600;}
+
+  .weather-row{display:flex; gap:10px; margin-top:10px;}
+  .weather-card{flex:1; background:#FBF7EF; border-radius:16px; padding:12px; min-width:0;}
+  .weather-card-title{font-weight:800; font-size:12.5px; color:var(--ink-soft); margin-bottom:8px; display:flex; align-items:center; gap:5px;}
+  table.weather-table{width:100%; border-collapse:collapse;}
+  table.weather-table th{font-size:10px; color:var(--muted); font-weight:700; padding-bottom:4px;}
+  table.weather-table td{text-align:center; font-size:11px; font-weight:700; color:var(--ink); padding:4px 2px; border-top:1px solid #EFE6D3; line-height:1.3;}
+  table.weather-table td.period-label{text-align:left; font-size:10.5px; font-weight:700; color:var(--ink-soft); white-space:nowrap;}
+  .weather-tips{display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;}
+  .weather-tip{font-size:10.5px; font-weight:700; background:#FFF1DA; color:#8A5A20; padding:3px 8px; border-radius:999px;}
 </style>
 </head>
 <body>
@@ -293,7 +303,127 @@ async function ghLoadLatest(){
   }
 }
 
-/* ---------------- Date helpers ---------------- */
+/* ---------------- Weather ---------------- */
+const WEATHER_LOCATIONS = [
+  { postcode: "2762", label: "Schofields", lat: -33.746, lon: 150.944 },
+  { postcode: "2000", label: "Sydney", lat: -33.8688, lon: 151.2093 },
+];
+
+let weatherData = { loaded: false, loading: false, error: null, byPostcode: {} };
+
+function weatherIcon(code){
+  if(code === 0) return "☀️";
+  if(code === 1 || code === 2) return "🌤️";
+  if(code === 3) return "☁️";
+  if(code === 45 || code === 48) return "🌫️";
+  if([51,53,55,56,57,61,63,65,66,67,80,81,82].includes(code)) return "🌧️";
+  if([71,73,75,77,85,86].includes(code)) return "❄️";
+  if([95,96,99].includes(code)) return "⛈️";
+  return "🌡️";
+}
+function isRainCode(code){
+  return [51,53,55,56,57,61,63,65,66,67,80,81,82,95,96,99].includes(code);
+}
+
+const DAY_PERIODS = [
+  { key: "morning", label: "Morning", hour: 9 },
+  { key: "afternoon", label: "Afternoon", hour: 15 },
+  { key: "evening", label: "Evening", hour: 19 },
+  { key: "night", label: "Night", hour: 23 },
+];
+
+async function fetchWeather(){
+  weatherData.loading = true;
+  weatherData.error = null;
+  try{
+    const results = await Promise.all(WEATHER_LOCATIONS.map(async loc => {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}` +
+        `&hourly=temperature_2m,weathercode,precipitation_probability` +
+        `&timezone=Australia%2FSydney&forecast_days=3`;
+      const res = await fetch(url);
+      if(!res.ok) throw new Error("Weather service unavailable");
+      const data = await res.json();
+      const times = data.hourly.time; // "YYYY-MM-DDTHH:00"
+      const byDate = {};
+      times.forEach((t, i) => {
+        const [datePart, timePart] = t.split("T");
+        const hour = parseInt(timePart.slice(0,2), 10);
+        if(!byDate[datePart]) byDate[datePart] = {};
+        byDate[datePart][hour] = {
+          temp: Math.round(data.hourly.temperature_2m[i]),
+          code: data.hourly.weathercode[i],
+          rainChance: data.hourly.precipitation_probability[i],
+        };
+      });
+      const dates = Object.keys(byDate).slice(0, 3);
+      const days = dates.map(date => {
+        const periods = DAY_PERIODS.map(p => byDate[date][p.hour] || null);
+        return { date, periods };
+      });
+      return [loc.postcode, days];
+    }));
+    weatherData.byPostcode = Object.fromEntries(results);
+    weatherData.loaded = true;
+  }catch(e){
+    weatherData.error = e.message;
+  }
+  weatherData.loading = false;
+  const zone = document.getElementById('weatherZone');
+  if(zone) zone.innerHTML = renderWeatherZoneHtml();
+}
+
+function dayLabel(dateStr, idx){
+  if(idx === 0) return "Today";
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString('en-AU', {weekday:'short'});
+}
+
+function renderWeatherZoneHtml(){
+  if(weatherData.error){
+    return `<div class="empty-state">Couldn't load weather right now. <span style="text-decoration:underline; cursor:pointer;" onclick="fetchWeather()">Try again</span></div>`;
+  }
+  if(!weatherData.loaded){
+    return `<div class="empty-state">Loading forecast... 🌤️</div>`;
+  }
+  return `<div class="weather-row">
+    ${WEATHER_LOCATIONS.map(loc => {
+      const days = weatherData.byPostcode[loc.postcode] || [];
+      const allPeriods = days.flatMap(d => d.periods).filter(Boolean);
+      const anyCold = allPeriods.some(p => p.temp < 18);
+      const anyRain = allPeriods.some(p => isRainCode(p.code) || p.rainChance >= 40);
+      return `
+        <div class="weather-card">
+          <div class="weather-card-title">📍 ${loc.label}</div>
+          <table class="weather-table">
+            <thead>
+              <tr>
+                <th></th>
+                ${days.map((d,i) => `<th>${dayLabel(d.date,i)}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${DAY_PERIODS.map((p, pi) => `
+                <tr>
+                  <td class="period-label">${p.label}</td>
+                  ${days.map(d => {
+                    const cell = d.periods[pi];
+                    if(!cell) return `<td>–</td>`;
+                    return `<td>${weatherIcon(cell.code)}<br>${cell.temp}°</td>`;
+                  }).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <div class="weather-tips">
+            ${anyCold ? '<span class="weather-tip">🧥 Wear a sweater</span>' : ''}
+            ${anyRain ? '<span class="weather-tip">☂️ Carry an umbrella</span>' : ''}
+            ${(!anyCold && !anyRain) ? '<span class="weather-tip">😎 Nice days ahead</span>' : ''}
+          </div>
+        </div>
+      `;
+    }).join('')}
+  </div>`;
+}
 function todayKey(d = new Date()){
   return d.toISOString().slice(0,10);
 }
@@ -427,7 +557,10 @@ function renderDashboard(){
           <div class="badge-label">${b.label}</div>
         </div>`).join('')}
     </div>
+    <div class="section-title">Weather Insights</div>
+    <div id="weatherZone">${renderWeatherZoneHtml()}</div>
   `;
+  if(!weatherData.loaded && !weatherData.loading) fetchWeather();
 }
 
 function renderDaily(){
