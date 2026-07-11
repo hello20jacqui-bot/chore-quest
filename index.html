@@ -110,6 +110,16 @@
   .icon-picker{display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;}
   .icon-picker span{font-size:20px; padding:4px 6px; border-radius:8px; cursor:pointer;}
   .icon-picker span.sel{background:#FFE3B3;}
+  .mode-toggle{border:none; border-radius:999px; padding:6px 12px; font-weight:800; font-size:12px;
+    cursor:pointer; background:rgba(255,255,255,.55); color:var(--purple1); white-space:nowrap; font-family:'Nunito',sans-serif;}
+  .mode-toggle.parent{background:var(--purple1); color:#fff;}
+  .sync-box{background:#FBF7EF; border-radius:14px; padding:12px 14px; margin-top:10px;}
+  .sync-box label{font-size:11px; font-weight:700; color:var(--muted); display:block; margin:6px 0 3px;}
+  .sync-box input[type=text], .sync-box input[type=password]{width:100%;}
+  .sync-actions{display:flex; gap:8px; margin-top:10px;}
+  .sync-actions button{flex:1; padding:9px; border-radius:10px; border:none; font-weight:800; font-size:12px; cursor:pointer;}
+  .sync-save{background:var(--purple1); color:#fff;}
+  .sync-status{font-size:11px; color:var(--muted); margin-top:8px; font-weight:600;}
 </style>
 </head>
 <body>
@@ -122,7 +132,10 @@
         <div class="app-sub" id="playerLabel" onclick="renamePlayer()">Tap to set name ✏️</div>
       </div>
     </div>
-    <div class="points-pill">⭐ <span id="todayPtsLabel">0 pts today</span></div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <button id="modeToggle" class="mode-toggle" onclick="toggleMode()">🧒 Kid Mode</button>
+      <div class="points-pill">⭐ <span id="todayPtsLabel">0 pts today</span></div>
+    </div>
   </header>
 
   <nav>
@@ -167,6 +180,118 @@ function loadState(){
 }
 let state = loadState();
 function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+
+/* ---------------- Parent PIN & Mode ---------------- */
+const PARENT_PIN = "1300"; // hardcoded parent PIN
+let mode = "kid"; // 'kid' | 'parent'
+
+function toggleMode(){
+  if(mode === "parent"){
+    mode = "kid";
+    updateModeButton();
+    renderAll();
+    return;
+  }
+  const attempt = prompt("Enter parent PIN to switch to Parent Mode:");
+  if(attempt === null) return;
+  if(attempt.trim() === PARENT_PIN){
+    mode = "parent";
+    updateModeButton();
+    renderAll();
+  } else {
+    alert("Incorrect PIN.");
+  }
+}
+
+function updateModeButton(){
+  const btn = document.getElementById('modeToggle');
+  if(!btn) return;
+  btn.textContent = mode === "parent" ? "🔓 Parent Mode" : "🧒 Kid Mode";
+  btn.classList.toggle('parent', mode === "parent");
+}
+
+/* ---------------- GitHub Sync ---------------- */
+const GH_KEY = "chore-quest-gh-settings";
+function loadGhSettings(){
+  try{ return JSON.parse(localStorage.getItem(GH_KEY)) || {}; }catch(e){ return {}; }
+}
+function saveGhSettings(s){ localStorage.setItem(GH_KEY, JSON.stringify(s)); }
+
+function saveGhFromForm(){
+  const owner = document.getElementById('ghOwner').value.trim();
+  const repo = document.getElementById('ghRepo').value.trim();
+  const path = document.getElementById('ghPath').value.trim() || 'data/state.json';
+  const branch = document.getElementById('ghBranch').value.trim() || 'main';
+  const token = document.getElementById('ghToken').value.trim();
+  const existing = loadGhSettings();
+  saveGhSettings({owner, repo, path, branch, token: token || existing.token || ""});
+  setSyncStatus("Connection details saved on this device.");
+}
+
+function setSyncStatus(msg){
+  const el = document.getElementById('syncStatus');
+  if(el) el.textContent = msg;
+}
+
+async function ghSyncNow(){
+  const cfg = loadGhSettings();
+  if(!cfg.owner || !cfg.repo || !cfg.token){
+    setSyncStatus("Please fill in owner, repo, and token, then Save first.");
+    return;
+  }
+  setSyncStatus("Saving to GitHub...");
+  try{
+    const api = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}`;
+    let sha = undefined;
+    const getRes = await fetch(`${api}?ref=${cfg.branch}`, {
+      headers: { Authorization: `token ${cfg.token}`, Accept: "application/vnd.github+json" }
+    });
+    if(getRes.ok){
+      const getData = await getRes.json();
+      sha = getData.sha;
+    }
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify(state, null, 2))));
+    const putRes = await fetch(api, {
+      method: "PUT",
+      headers: { Authorization: `token ${cfg.token}`, Accept: "application/vnd.github+json" },
+      body: JSON.stringify({
+        message: `Update Chore Quest data — ${new Date().toISOString()}`,
+        content, sha, branch: cfg.branch
+      })
+    });
+    if(!putRes.ok){
+      const err = await putRes.json().catch(()=>({}));
+      throw new Error(err.message || putRes.statusText);
+    }
+    setSyncStatus("Saved to GitHub ✅ " + new Date().toLocaleTimeString());
+  }catch(e){
+    setSyncStatus("Sync failed: " + e.message);
+  }
+}
+
+async function ghLoadLatest(){
+  const cfg = loadGhSettings();
+  if(!cfg.owner || !cfg.repo || !cfg.token){
+    setSyncStatus("Please fill in owner, repo, and token, then Save first.");
+    return;
+  }
+  setSyncStatus("Loading from GitHub...");
+  try{
+    const api = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}`;
+    const res = await fetch(`${api}?ref=${cfg.branch}`, {
+      headers: { Authorization: `token ${cfg.token}`, Accept: "application/vnd.github+json" }
+    });
+    if(!res.ok) throw new Error("File not found yet in repo — Sync now to create it.");
+    const data = await res.json();
+    const json = decodeURIComponent(escape(atob(data.content)));
+    state = JSON.parse(json);
+    save();
+    renderAll();
+    setSyncStatus("Loaded latest from GitHub ✅ " + new Date().toLocaleTimeString());
+  }catch(e){
+    setSyncStatus("Load failed: " + e.message);
+  }
+}
 
 /* ---------------- Date helpers ---------------- */
 function todayKey(d = new Date()){
@@ -329,13 +454,54 @@ function renderDaily(){
   el.innerHTML = `
     <div class="section-title">Today's Missions</div>
     <div style="margin-top:10px;">${rows}</div>
+    <div id="parentZone"></div>
+  `;
+
+  renderParentZone();
+}
+
+function renderParentZone(){
+  const zone = document.getElementById('parentZone');
+  if(!zone) return;
+
+  if(mode !== "parent"){
+    zone.innerHTML = `
+      <div style="text-align:center; margin-top:22px;">
+        <div class="empty-state" style="padding-top:0;">Switch to Parent Mode (top right) to add or edit missions.</div>
+      </div>
+    `;
+    return;
+  }
+
+  const cfg = loadGhSettings();
+
+  zone.innerHTML = `
     <div class="section-title">Manage Missions</div>
     <div id="manageList" style="margin-top:8px;"></div>
     <button class="add-btn" onclick="addTaskPrompt()">+ Add a new mission</button>
+
+    <div class="section-title">Save to GitHub</div>
+    <div class="sync-box">
+      <label>Repo owner</label>
+      <input type="text" id="ghOwner" value="${escapeAttr(cfg.owner || 'hello20jacqui-bot')}">
+      <label>Repository name</label>
+      <input type="text" id="ghRepo" value="${escapeAttr(cfg.repo || 'chore-quest')}">
+      <label>File path in repo</label>
+      <input type="text" id="ghPath" value="${escapeAttr(cfg.path || 'data/state.json')}">
+      <label>Branch</label>
+      <input type="text" id="ghBranch" value="${escapeAttr(cfg.branch || 'main')}">
+      <label>Personal access token (kept only on this device)</label>
+      <input type="password" id="ghToken" placeholder="${cfg.token ? '•••• saved — leave blank to keep' : 'ghp_...'}">
+      <div class="sync-actions">
+        <button class="sync-save" onclick="saveGhFromForm()">Save connection</button>
+        <button onclick="ghSyncNow()">Sync now</button>
+        <button onclick="ghLoadLatest()">Load latest</button>
+      </div>
+      <div class="sync-status" id="syncStatus"></div>
+    </div>
   `;
 
-  const manageEl = document.getElementById('manageList');
-  manageEl.innerHTML = state.tasks.map(t => `
+  document.getElementById('manageList').innerHTML = state.tasks.map(t => `
     <div class="settings-row">
       <span style="font-size:18px;">${t.icon}</span>
       <input type="text" value="${escapeAttr(t.name)}" onchange="updateTaskName(${t.id}, this.value)">
@@ -436,6 +602,7 @@ function shiftMonth(delta){
 
 function renderAll(){
   renderHeader();
+  updateModeButton();
   if(currentTab==='dashboard') renderDashboard();
   if(currentTab==='daily') renderDaily();
   if(currentTab==='weekly') renderWeekly();
