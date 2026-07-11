@@ -42,8 +42,26 @@
       "name": "Return Shoes",
       "icon": "🛏️",
       "points": 10
+    },
+    {
+      "id": 8,
+      "name": "MultiVit",
+      "icon": "🚮",
+      "points": 10
+    },
+    {
+      "id": 9,
+      "name": "Fruit",
+      "icon": "🧦",
+      "points": 10
+    },
+    {
+      "id": 10,
+      "name": "Milk",
+      "icon": "📚",
+      "points": 10
     }
   ],
-  "nextTaskId": 8,
+  "nextTaskId": 11,
   "completions": {}
 }
