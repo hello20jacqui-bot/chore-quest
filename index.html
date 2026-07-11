@@ -182,11 +182,11 @@ function loadState(){
     player: "",
     tasks: [
       {id:1, name:"Make bed", icon:"🛏️", points:10},
-      //{id:2, name:"Brush teeth", icon:"🦷", points:10},
-      //{id:3, name:"Feed the pet", icon:"🐶", points:15},
-      //{id:4, name:"Pack school bag", icon:"🎒", points:10},
-      //{id:5, name:"Homework", icon:"📚", points:25},
-      //{id:6, name:"Tidy room", icon:"🧸", points:20},
+      {id:2, name:"Brush teeth", icon:"🦷", points:10},
+      {id:3, name:"Feed the pet", icon:"🐶", points:15},
+      {id:4, name:"Pack school bag", icon:"🎒", points:10},
+      {id:5, name:"Homework", icon:"📚", points:25},
+      {id:6, name:"Tidy room", icon:"🧸", points:20},
     ],
     nextTaskId: 7,
     // completions: { "YYYY-MM-DD": { taskId: true } }
@@ -243,18 +243,22 @@ function saveGhFromForm(){
   setSyncStatus("Connection details saved on this device.");
 }
 
-function setSyncStatus(msg){
-  const el = document.getElementById('syncStatus');
-  if(el) el.textContent = msg;
+function hasGhConfig(){
+  const cfg = loadGhSettings();
+  return !!(cfg.owner && cfg.repo && cfg.token);
 }
 
-async function ghSyncNow(){
+let isSyncing = false;
+
+async function ghSyncNow(silent){
   const cfg = loadGhSettings();
   if(!cfg.owner || !cfg.repo || !cfg.token){
-    setSyncStatus("Please fill in owner, repo, and token, then Save first.");
+    if(!silent) setSyncStatus("Please fill in owner, repo, and token, then Save first.");
     return;
   }
-  setSyncStatus("Saving to GitHub...");
+  if(isSyncing) return;
+  isSyncing = true;
+  if(!silent) setSyncStatus("Saving to GitHub...");
   try{
     const api = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}`;
     let sha = undefined;
@@ -265,7 +269,8 @@ async function ghSyncNow(){
       const getData = await getRes.json();
       sha = getData.sha;
     }
-    const content = btoa(unescape(encodeURIComponent(JSON.stringify(state, null, 2))));
+    const payload = JSON.stringify(state, null, 2);
+    const content = btoa(unescape(encodeURIComponent(payload)));
     const putRes = await fetch(api, {
       method: "PUT",
       headers: { Authorization: `token ${cfg.token}`, Accept: "application/vnd.github+json" },
@@ -278,19 +283,23 @@ async function ghSyncNow(){
       const err = await putRes.json().catch(()=>({}));
       throw new Error(err.message || putRes.statusText);
     }
-    setSyncStatus("Saved to GitHub ✅ " + new Date().toLocaleTimeString());
+    lastSyncedJson = payload;
+    setSyncStatus("Synced ✅ " + new Date().toLocaleTimeString());
   }catch(e){
     setSyncStatus("Sync failed: " + e.message);
   }
+  isSyncing = false;
 }
 
-async function ghLoadLatest(){
+async function ghLoadLatest(silent){
   const cfg = loadGhSettings();
   if(!cfg.owner || !cfg.repo || !cfg.token){
-    setSyncStatus("Please fill in owner, repo, and token, then Save first.");
+    if(!silent) setSyncStatus("Please fill in owner, repo, and token, then Save first.");
     return;
   }
-  setSyncStatus("Loading from GitHub...");
+  if(isSyncing) return;
+  isSyncing = true;
+  if(!silent) setSyncStatus("Loading from GitHub...");
   try{
     const api = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}`;
     const res = await fetch(`${api}?ref=${cfg.branch}`, {
@@ -299,13 +308,35 @@ async function ghLoadLatest(){
     if(!res.ok) throw new Error("File not found yet in repo — Sync now to create it.");
     const data = await res.json();
     const json = decodeURIComponent(escape(atob(data.content)));
-    state = JSON.parse(json);
-    save();
-    renderAll();
-    setSyncStatus("Loaded latest from GitHub ✅ " + new Date().toLocaleTimeString());
+    if(json !== lastSyncedJson){
+      state = JSON.parse(json);
+      save();
+      renderAll();
+      lastSyncedJson = json;
+      setSyncStatus("Updated from another device ✅ " + new Date().toLocaleTimeString());
+    } else if(!silent){
+      setSyncStatus("Already up to date ✅ " + new Date().toLocaleTimeString());
+    }
   }catch(e){
-    setSyncStatus("Load failed: " + e.message);
+    if(!silent) setSyncStatus("Load failed: " + e.message);
   }
+  isSyncing = false;
+}
+
+/* ---------------- Auto-sync (debounced push + polling pull) ---------------- */
+let lastSyncedJson = null;
+let pushTimer = null;
+
+function queueAutoPush(){
+  if(!hasGhConfig()) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => { ghSyncNow(true); }, 1200);
+}
+
+function startAutoPoll(){
+  setInterval(() => {
+    if(hasGhConfig() && !isSyncing) ghLoadLatest(true);
+  }, 20000);
 }
 
 /* ---------------- Weather ---------------- */
@@ -627,8 +658,11 @@ function renderParentZone(){
     <div id="manageList" style="margin-top:8px;"></div>
     <button class="add-btn" onclick="addTaskPrompt()">+ Add a new mission</button>
 
-    <div class="section-title">Save to GitHub</div>
+    <div class="section-title">Sync Across Devices</div>
     <div class="sync-box">
+      <div style="font-size:11.5px; color:var(--ink-soft); font-weight:600; margin-bottom:4px;">
+        Once connected, this device auto-syncs every ~20s — no need to tap the buttons unless you want to force it.
+      </div>
       <label>Repo owner</label>
       <input type="text" id="ghOwner" value="${escapeAttr(cfg.owner || 'hello20jacqui-bot')}">
       <label>Repository name</label>
@@ -763,6 +797,7 @@ function toggleTask(id){
   state.completions[today][id] = !state.completions[today][id];
   save();
   renderAll();
+  queueAutoPush();
 }
 
 const ICONS = ["🛏️","🦷","🐶","🎒","📚","🧸","🧹","🍽️","🚿","👕","🌱","📦","🥣","🧦","🚮","⚽"];
@@ -775,26 +810,43 @@ function addTaskPrompt(){
   state.tasks.push({id: state.nextTaskId++, name: name.trim(), icon, points});
   save();
   renderAll();
+  queueAutoPush();
 }
 function updateTaskName(id, value){
   const t = state.tasks.find(t=>t.id===id);
-  if(t){ t.name = value.trim() || t.name; save(); renderAll(); }
+  if(t){ t.name = value.trim() || t.name; save(); renderAll(); queueAutoPush(); }
 }
 function updateTaskPoints(id, value){
   const t = state.tasks.find(t=>t.id===id);
-  if(t){ t.points = Math.max(0, parseInt(value,10) || 0); save(); renderAll(); }
+  if(t){ t.points = Math.max(0, parseInt(value,10) || 0); save(); renderAll(); queueAutoPush(); }
 }
 function deleteTask(id){
   if(!confirm("Remove this mission? Past history stays on the calendar.")) return;
   state.tasks = state.tasks.filter(t=>t.id!==id);
   save();
   renderAll();
+  queueAutoPush();
 }
 function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function escapeAttr(s){ return escapeHtml(s); }
 
+/* ---------------- Cross-tab (same device) live update ---------------- */
+window.addEventListener('storage', (e) => {
+  if(e.key === STORE_KEY && e.newValue){
+    try{
+      state = JSON.parse(e.newValue);
+      renderAll();
+    }catch(err){}
+  }
+});
+
 /* ---------------- Init ---------------- */
 renderAll();
+if(hasGhConfig()){
+  ghLoadLatest(true).then(startAutoPoll);
+} else {
+  startAutoPoll();
+}
 </script>
 </body>
 </html>
