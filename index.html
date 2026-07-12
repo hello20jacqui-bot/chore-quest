@@ -20,7 +20,7 @@
     --shadow-lg:0 20px 48px rgba(46,36,56,.18);
   }
   *{box-sizing:border-box;}
-  html,body{height:100%;}
+  html{ min-height:100%; }
   body{
     margin:0; min-height:100vh;
     background:
@@ -28,10 +28,10 @@
       radial-gradient(circle at 90% 0%, rgba(122,95,201,.28), transparent 40%),
       radial-gradient(circle at 100% 100%, rgba(34,176,125,.18), transparent 40%),
       linear-gradient(180deg,var(--cream) 0%,#FFEFE0 60%,#FFF6EC 100%);
-    background-attachment:fixed;
     font-family:'Nunito',sans-serif; color:var(--ink);
-    padding:20px 16px; display:flex; justify-content:center;
+    padding:20px 16px; display:flex; justify-content:center; align-items:flex-start;
     -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
   }
   .frame{
     width:100%; max-width:480px; background:var(--panel);
