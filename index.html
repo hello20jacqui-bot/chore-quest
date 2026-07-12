@@ -196,6 +196,13 @@ function loadState(){
 let state = loadState();
 function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
 
+/* Tracks the last state JSON we know is confirmed saved in GitHub, persisted so it
+   survives a page reload — this is how we detect "local has changes GitHub doesn't have yet". */
+const SYNCED_KEY = "chore-quest-v1-synced";
+function getSyncedJson(){ return localStorage.getItem(SYNCED_KEY); }
+function markSynced(json){ localStorage.setItem(SYNCED_KEY, json); lastSyncedJson = json; }
+function hasUnsyncedChanges(){ return JSON.stringify(state) !== getSyncedJson(); }
+
 /* ---------------- Parent PIN & Mode ---------------- */
 const PARENT_PIN = "1300"; // hardcoded parent PIN
 let mode = "kid"; // 'kid' | 'parent'
@@ -284,6 +291,7 @@ async function ghSyncNow(silent){
       throw new Error(err.message || putRes.statusText);
     }
     lastSyncedJson = payload;
+    markSynced(payload);
     setSyncStatus("Synced ✅ " + new Date().toLocaleTimeString());
   }catch(e){
     setSyncStatus("Sync failed: " + e.message);
@@ -308,11 +316,18 @@ async function ghLoadLatest(silent){
     if(!res.ok) throw new Error("File not found yet in repo — Sync now to create it.");
     const data = await res.json();
     const json = decodeURIComponent(escape(atob(data.content)));
+    if(hasUnsyncedChanges()){
+      // Don't clobber changes made on this device that haven't been pushed yet —
+      // push them first, then this poll cycle will naturally pick up any real remote changes next time.
+      isSyncing = false;
+      await ghSyncNow(silent);
+      return;
+    }
     if(json !== lastSyncedJson){
       state = JSON.parse(json);
       save();
       renderAll();
-      lastSyncedJson = json;
+      markSynced(json);
       setSyncStatus("Updated from another device ✅ " + new Date().toLocaleTimeString());
     } else if(!silent){
       setSyncStatus("Already up to date ✅ " + new Date().toLocaleTimeString());
@@ -330,7 +345,7 @@ let pushTimer = null;
 function queueAutoPush(){
   if(!hasGhConfig()) return;
   clearTimeout(pushTimer);
-  pushTimer = setTimeout(() => { ghSyncNow(true); }, 1200);
+  pushTimer = setTimeout(() => { ghSyncNow(true); }, 500);
 }
 
 function startAutoPoll(){
@@ -842,11 +857,24 @@ window.addEventListener('storage', (e) => {
 
 /* ---------------- Init ---------------- */
 renderAll();
-if(hasGhConfig()){
-  ghLoadLatest(true).then(startAutoPoll);
-} else {
+async function initSync(){
+  if(!hasGhConfig()) { startAutoPoll(); return; }
+  if(getSyncedJson() === null){
+    // First time this device has ever synced — pull the real shared data first
+    // so we don't push this device's blank/default state over everyone else's.
+    await ghLoadLatest(true);
+    if(getSyncedJson() === null){
+      // Nothing existed in the repo yet — safe to bootstrap it with local state.
+      await ghSyncNow(true);
+    }
+  } else if(hasUnsyncedChanges()){
+    await ghSyncNow(true); // flush anything made on this device before we came back online
+  } else {
+    await ghLoadLatest(true);
+  }
   startAutoPoll();
 }
+initSync();
 </script>
 </body>
 </html>
