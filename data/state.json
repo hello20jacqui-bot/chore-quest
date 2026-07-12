@@ -53,7 +53,7 @@
   "nextTaskId": 11,
   "completions": {
     "2026-07-12": {
-      "1": true,
+      "1": false,
       "5": true,
       "6": true,
       "7": true,
