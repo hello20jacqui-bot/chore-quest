@@ -55,9 +55,9 @@
     "2026-07-12": {
       "1": false,
       "5": false,
-      "6": true,
-      "7": true,
-      "8": true
+      "6": false,
+      "7": false,
+      "8": false
     }
   }
 }
