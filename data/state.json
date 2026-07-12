@@ -39,5 +39,9 @@
     }
   ],
   "nextTaskId": 7,
-  "completions": {}
+  "completions": {
+    "2026-07-12": {
+      "1": false
+    }
+  }
 }
