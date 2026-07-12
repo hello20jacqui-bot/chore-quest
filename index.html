@@ -7,6 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚀</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
   :root{
     --cream:#FFF8EC; --panel:#FFFDF8; --border:#FFE3B3; --tabbg:#FFEFD6;
     --ink:#3B2F1F; --ink-soft:#5A4630; --muted:#9A8A70;
@@ -242,6 +243,11 @@ function loadGhSettings(){
   try{ return JSON.parse(localStorage.getItem(GH_KEY)) || {}; }catch(e){ return {}; }
 }
 function saveGhSettings(s){ localStorage.setItem(GH_KEY, JSON.stringify(s)); }
+
+function setSyncStatus(msg){
+  const el = document.getElementById('syncStatus');
+  if(el) el.textContent = msg;
+}
 
 function saveGhFromForm(){
   const owner = document.getElementById('ghOwner').value.trim();
