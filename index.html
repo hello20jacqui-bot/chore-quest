@@ -662,10 +662,26 @@ function renderDaily(){
   el.innerHTML = `
     <div class="section-title">Today's Missions</div>
     <div style="margin-top:10px;">${rows}</div>
+    <button class="add-btn" id="updateBtn" style="margin-top:14px; border-color:var(--green); color:var(--green);" onclick="handleUpdateClick()">🔄 Update</button>
+    <div class="sync-status" id="kidSyncStatus" style="text-align:center;"></div>
     <div id="parentZone"></div>
   `;
 
   renderParentZone();
+}
+
+async function handleUpdateClick(){
+  const btn = document.getElementById('updateBtn');
+  const statusEl = document.getElementById('kidSyncStatus');
+  if(!hasGhConfig()){
+    if(statusEl) statusEl.textContent = "Sync isn't set up on this device yet — ask a parent to connect it in Admin mode.";
+    return;
+  }
+  if(btn){ btn.disabled = true; btn.textContent = "🔄 Updating..."; }
+  if(statusEl) statusEl.textContent = "";
+  await forceSyncBoth();
+  if(btn){ btn.disabled = false; btn.textContent = "🔄 Update"; }
+  if(statusEl) statusEl.textContent = "All caught up ✅ " + new Date().toLocaleTimeString();
 }
 
 function renderParentZone(){
@@ -717,7 +733,6 @@ function renderParentZone(){
         <button onclick="ghSyncNow()">Sync now</button>
         <button onclick="ghLoadLatest()">Load latest</button>
       </div>
-      <button class="add-btn" style="margin-top:12px; border-color:var(--purple1); color:var(--purple1);" onclick="forceSyncBoth()">🔄 Force Sync (push + pull all devices)</button>
       <button class="add-btn" style="margin-top:8px; border-color:#C0392B; color:#C0392B;" onclick="clearLocalCache()">🧹 Clear local cache &amp; reload from GitHub</button>
       <div class="sync-status" id="syncStatus"></div>
     </div>
