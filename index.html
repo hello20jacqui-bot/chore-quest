@@ -354,6 +354,30 @@ function startAutoPoll(){
   }, 5000);
 }
 
+/* Push whatever's on this device first (so nothing local gets lost), then pull
+   in case another device saved something newer in the meantime. Manual, non-silent. */
+async function forceSyncBoth(){
+  if(!hasGhConfig()){
+    setSyncStatus("Please fill in owner, repo, and token, then Save first.");
+    return;
+  }
+  setSyncStatus("Force syncing — pushing this device's changes...");
+  await ghSyncNow(true);
+  setSyncStatus("Now pulling the latest from GitHub...");
+  // temporarily bypass the "don't overwrite unsynced changes" guard since we just pushed everything
+  await ghLoadLatest(true);
+  setSyncStatus("Force sync complete ✅ " + new Date().toLocaleTimeString());
+}
+
+/* Wipes this device's saved data and connection cache so the next load pulls a
+   clean copy from GitHub instead of risking a stale push overwriting the shared file. */
+function clearLocalCache(){
+  if(!confirm("This clears this device's saved chores/points and re-downloads the latest from GitHub. Your GitHub connection details stay saved. Continue?")) return;
+  localStorage.removeItem(STORE_KEY);
+  localStorage.removeItem(SYNCED_KEY);
+  location.reload();
+}
+
 /* ---------------- Weather ---------------- */
 const WEATHER_LOCATIONS = [
   { postcode: "2762", label: "Schofields", lat: -33.746, lon: 150.944 },
@@ -693,6 +717,8 @@ function renderParentZone(){
         <button onclick="ghSyncNow()">Sync now</button>
         <button onclick="ghLoadLatest()">Load latest</button>
       </div>
+      <button class="add-btn" style="margin-top:12px; border-color:var(--purple1); color:var(--purple1);" onclick="forceSyncBoth()">🔄 Force Sync (push + pull all devices)</button>
+      <button class="add-btn" style="margin-top:8px; border-color:#C0392B; color:#C0392B;" onclick="clearLocalCache()">🧹 Clear local cache &amp; reload from GitHub</button>
       <div class="sync-status" id="syncStatus"></div>
     </div>
   `;
