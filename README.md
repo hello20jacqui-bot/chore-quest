@@ -28,9 +28,9 @@ The kid **cannot** add, rename, re-point, or delete chores — that option simpl
 
 Once you've connected a device (owner/repo/token, tap Save connection), that device:
 - **Auto-pushes** any change within ~1 second
-- **Auto-pulls** other devices' changes every ~20 seconds
+- **Auto-pulls** other devices' changes every ~5 seconds
 
-So if your kid checks something off on their tablet, your phone will show it updated within about 20 seconds — no manual syncing needed day to day.
+So if your kid checks something off on their tablet, your phone will show it updated within about 5 seconds — no manual syncing needed day to day.
 
 ## A Practical Workflow
 
