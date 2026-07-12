@@ -255,6 +255,14 @@ function hasGhConfig(){
   return !!(cfg.owner && cfg.repo && cfg.token);
 }
 
+/* Wraps fetch with a hard timeout so a stalled connection (flaky wifi, blocked
+   request, etc.) can never leave a sync stuck "in progress" forever. */
+function fetchWithTimeout(url, options, ms = 10000){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 let isSyncing = false;
 
 async function ghSyncNow(silent){
@@ -269,7 +277,7 @@ async function ghSyncNow(silent){
   try{
     const api = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}`;
     let sha = undefined;
-    const getRes = await fetch(`${api}?ref=${cfg.branch}`, {
+    const getRes = await fetchWithTimeout(`${api}?ref=${cfg.branch}`, {
       headers: { Authorization: `token ${cfg.token}`, Accept: "application/vnd.github+json" }
     });
     if(getRes.ok){
@@ -278,7 +286,7 @@ async function ghSyncNow(silent){
     }
     const payload = JSON.stringify(state, null, 2);
     const content = btoa(unescape(encodeURIComponent(payload)));
-    const putRes = await fetch(api, {
+    const putRes = await fetchWithTimeout(api, {
       method: "PUT",
       headers: { Authorization: `token ${cfg.token}`, Accept: "application/vnd.github+json" },
       body: JSON.stringify({
@@ -310,7 +318,7 @@ async function ghLoadLatest(silent){
   if(!silent) setSyncStatus("Loading from GitHub...");
   try{
     const api = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}`;
-    const res = await fetch(`${api}?ref=${cfg.branch}`, {
+    const res = await fetchWithTimeout(`${api}?ref=${cfg.branch}`, {
       headers: { Authorization: `token ${cfg.token}`, Accept: "application/vnd.github+json" }
     });
     if(!res.ok) throw new Error("File not found yet in repo — Sync now to create it.");
@@ -679,9 +687,17 @@ async function handleUpdateClick(){
   }
   if(btn){ btn.disabled = true; btn.textContent = "🔄 Updating..."; }
   if(statusEl) statusEl.textContent = "";
-  await forceSyncBoth();
-  if(btn){ btn.disabled = false; btn.textContent = "🔄 Update"; }
-  if(statusEl) statusEl.textContent = "All caught up ✅ " + new Date().toLocaleTimeString();
+  try{
+    await forceSyncBoth();
+    if(statusEl) statusEl.textContent = "All caught up ✅ " + new Date().toLocaleTimeString();
+  }catch(e){
+    if(statusEl) statusEl.textContent = "Couldn't update — " + (e.message || "check your connection and try again.");
+  }finally{
+    // Re-fetch these by id (not the outer btn/statusEl vars) in case the tab
+    // re-rendered while we were syncing and replaced the DOM nodes underneath us.
+    const liveBtn = document.getElementById('updateBtn');
+    if(liveBtn){ liveBtn.disabled = false; liveBtn.textContent = "🔄 Update"; }
+  }
 }
 
 function renderParentZone(){
